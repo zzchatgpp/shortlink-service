@@ -1,0 +1,65 @@
+name: shortlink-service
+services:
+  app:
+    build: .
+    ports:
+    - 127.0.0.1:${APP_PORT:-8080}:8080
+    environment:
+      PORT: '8080'
+      SPRING_PROFILES_ACTIVE: mysql
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+      DB_URL: jdbc:mysql://mysql:3306/shortlink_db?connectionTimeZone=UTC&allowPublicKeyRetrieval=true&sslMode=DISABLED
+      DB_USERNAME: shortlink_user
+      DB_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      CACHE_ENABLED: 'true'
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-3600}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: shortlink_db
+      MYSQL_USER: shortlink_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+    - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=tcp -h 127.0.0.1 -u "$${MYSQL_USER}"
+        -D "$${MYSQL_DATABASE}" -e 'SELECT 1' >/dev/null 2>&1
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command:
+    - redis-server
+    - --maxmemory
+    - 64mb
+    - --maxmemory-policy
+    - allkeys-lru
+    - --save
+    - ''
+    - --appendonly
+    - 'no'
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  mysql_data: null

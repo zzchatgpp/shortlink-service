@@ -1,0 +1,39 @@
+name: Build and container smoke test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Ephemeral local CI database credentials; these are not deployed secrets.
+      MYSQL_ROOT_PASSWORD: ci-ephemeral-root-password
+      MYSQL_PASSWORD: ci-ephemeral-app-password
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+      - name: Run tests and package
+        run: |
+          chmod +x mvnw
+          ./mvnw --batch-mode verify
+      - name: Start actual MySQL, Redis and app
+        run: docker compose up --build -d --wait --wait-timeout 240
+      - name: Verify endpoints and Redis TTL
+        run: python3 scripts/smoke_test.py --redis-check
+      - name: Show container status and app logs
+        if: always()
+        run: |
+          docker compose ps
+          docker compose logs --tail=100 app
+      - name: Stop CI containers
+        if: always()
+        run: docker compose down

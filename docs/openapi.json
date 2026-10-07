@@ -1,0 +1,425 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "Shortlink Service API",
+    "description" : "Create HTTP/HTTPS short links with optional expiry, follow redirects,\nand inspect click analytics. Codes use case-sensitive Base62.\nCreate a link first, then use its returned shortCode in other requests.\nExpiry timestamps use ISO-8601 with a timezone. Omitting expiry creates\na permanent link. Analytics remains available after a link expires.\nEach active GET redirect counts once; HEAD and analytics reads do not.\n",
+    "version" : "1.0.0"
+  },
+  "servers" : [ {
+    "url" : "/",
+    "description" : "Current application origin"
+  } ],
+  "tags" : [ {
+    "name" : "Links",
+    "description" : "Create short links and inspect their statistics"
+  }, {
+    "name" : "Redirects",
+    "description" : "Open short links; active GET requests count as visits"
+  } ],
+  "paths" : {
+    "/api/links" : {
+      "post" : {
+        "tags" : [ "Links" ],
+        "summary" : "Create a short link",
+        "description" : "Accepts an absolute HTTP/HTTPS URL of up to 2048 characters, without embedded credentials. Optional expiresAt must be in the future. Omit it or use null for no expiry. Repeated destination URLs receive different codes. ID, code and timestamps in responses vary.",
+        "operationId" : "createShortLink",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateLinkRequest"
+              },
+              "examples" : {
+                "Permanent link" : {
+                  "description" : "Permanent link",
+                  "value" : {
+                    "originalUrl" : "https://example.com/articles/java"
+                  }
+                },
+                "Expiring link" : {
+                  "description" : "Expiring link",
+                  "value" : {
+                    "originalUrl" : "https://example.com/event",
+                    "expiresAt" : "2030-01-01T00:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "description" : "Link created",
+            "headers" : {
+              "Location" : {
+                "description" : "Generated short URL",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri"
+                }
+              }
+            },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CreateLinkResponse"
+                },
+                "example" : {
+                  "id" : 1,
+                  "shortCode" : "1",
+                  "shortUrl" : "http://localhost:8080/s/1",
+                  "originalUrl" : "https://example.com/articles/java",
+                  "createdAt" : "2026-10-07T10:30:00Z",
+                  "expiresAt" : null
+                }
+              }
+            }
+          },
+          "400" : {
+            "description" : "Invalid URL, expiry or JSON body",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                },
+                "examples" : {
+                  "Validation error" : {
+                    "description" : "Validation error",
+                    "value" : {
+                      "type" : "about:blank",
+                      "title" : "Invalid request",
+                      "status" : 400,
+                      "detail" : "Request validation failed",
+                      "instance" : "/api/links",
+                      "errors" : {
+                        "originalUrl" : "originalUrl is required"
+                      }
+                    }
+                  },
+                  "Malformed body" : {
+                    "description" : "Malformed body",
+                    "value" : {
+                      "type" : "about:blank",
+                      "title" : "Invalid request body",
+                      "status" : 400,
+                      "detail" : "Provide valid JSON. expiresAt must be an ISO-8601 timestamp with a timezone, or null.",
+                      "instance" : "/api/links"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415" : {
+            "description" : "Request Content-Type must be application/json",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/s/{code}" : {
+      "get" : {
+        "tags" : [ "Redirects" ],
+        "summary" : "Redirect to the destination",
+        "description" : "Returns HTTP 302 with a Location header and no body. Counts one active GET redirect. HEAD is also supported and does not count. Open shortUrl in a browser or use curl -i to inspect headers. Swagger's browser request may follow the redirect to the external destination.",
+        "operationId" : "redirectShortLink",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Case-sensitive shortCode returned by creation",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : 1
+        } ],
+        "responses" : {
+          "302" : {
+            "description" : "Active link; redirect to the original URL",
+            "headers" : {
+              "Cache-Control" : {
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string",
+                  "example" : "no-store"
+                }
+              },
+              "Location" : {
+                "description" : "Original destination",
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string",
+                  "format" : "uri"
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Unknown, malformed or overflowing code",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                },
+                "example" : {
+                  "type" : "about:blank",
+                  "title" : "Link not found",
+                  "status" : 404,
+                  "detail" : "No link exists for this short code"
+                }
+              }
+            }
+          },
+          "410" : {
+            "description" : "Link expiry is at or before the current time",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                },
+                "example" : {
+                  "type" : "about:blank",
+                  "title" : "Link expired",
+                  "status" : 410,
+                  "detail" : "This short link has expired"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/links/{code}/stats" : {
+      "get" : {
+        "tags" : [ "Links" ],
+        "summary" : "Get link analytics",
+        "description" : "Reads current stored statistics from MySQL. Does not count as a click. Expired links remain available with expired=true. A new link has clickCount=0 and lastClickedAt=null.",
+        "operationId" : "getLinkAnalytics",
+        "parameters" : [ {
+          "name" : "code",
+          "in" : "path",
+          "description" : "Case-sensitive shortCode returned by creation",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          },
+          "example" : 1
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "Current statistics, including for expired links",
+            "headers" : {
+              "Cache-Control" : {
+                "style" : "simple",
+                "schema" : {
+                  "type" : "string",
+                  "example" : "no-store"
+                }
+              }
+            },
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/LinkAnalyticsResponse"
+                },
+                "example" : {
+                  "id" : 1,
+                  "shortCode" : "1",
+                  "shortUrl" : "http://localhost:8080/s/1",
+                  "originalUrl" : "https://example.com/articles/java",
+                  "createdAt" : "2026-10-07T10:30:00Z",
+                  "expiresAt" : null,
+                  "clickCount" : 3,
+                  "lastClickedAt" : "2026-10-07T10:35:00Z",
+                  "expired" : false
+                }
+              }
+            }
+          },
+          "404" : {
+            "description" : "Unknown, malformed or overflowing short code",
+            "content" : {
+              "application/problem+json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ProblemDetail"
+                },
+                "example" : {
+                  "type" : "about:blank",
+                  "title" : "Link not found",
+                  "status" : 404,
+                  "detail" : "No link exists for this short code"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "CreateLinkRequest" : {
+        "required" : [ "originalUrl" ],
+        "type" : "object",
+        "properties" : {
+          "originalUrl" : {
+            "maxLength" : 2048,
+            "minLength" : 0,
+            "type" : "string",
+            "description" : "Absolute HTTP/HTTPS destination without embedded credentials; percent-encode spaces",
+            "format" : "uri",
+            "example" : "https://example.com/articles/java"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "description" : "Optional future expiry up to 9999-12-31T23:59:59Z, in ISO-8601 format with a timezone; omit or use null for no expiry",
+            "format" : "date-time",
+            "nullable" : true,
+            "example" : "2030-01-01T00:00:00Z"
+          }
+        }
+      },
+      "CreateLinkResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique auto-increment database ID",
+            "format" : "int64",
+            "example" : 1
+          },
+          "shortCode" : {
+            "type" : "string",
+            "description" : "Case-sensitive Base62 encoding of the ID",
+            "example" : "1"
+          },
+          "shortUrl" : {
+            "type" : "string",
+            "description" : "Generated redirect URL",
+            "format" : "uri",
+            "example" : "http://localhost:8080/s/1"
+          },
+          "originalUrl" : {
+            "type" : "string",
+            "description" : "Original destination URL",
+            "format" : "uri",
+            "example" : "https://example.com/articles/java"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "description" : "UTC creation timestamp",
+            "format" : "date-time",
+            "example" : "2026-10-07T10:30:00Z"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "description" : "Optional expiry timestamp; null means no expiry",
+            "format" : "date-time",
+            "nullable" : true,
+            "example" : "2030-01-01T00:00:00Z"
+          }
+        }
+      },
+      "ProblemDetail" : {
+        "type" : "object",
+        "properties" : {
+          "type" : {
+            "type" : "string",
+            "format" : "uri"
+          },
+          "title" : {
+            "type" : "string",
+            "nullable" : true
+          },
+          "status" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "detail" : {
+            "type" : "string",
+            "nullable" : true
+          },
+          "instance" : {
+            "type" : "string",
+            "format" : "uri",
+            "nullable" : true
+          },
+          "properties" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "object"
+            },
+            "nullable" : true
+          }
+        }
+      },
+      "LinkAnalyticsResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "integer",
+            "description" : "Unique auto-increment database ID",
+            "format" : "int64",
+            "example" : 1
+          },
+          "shortCode" : {
+            "type" : "string",
+            "description" : "Case-sensitive Base62 encoding of the ID",
+            "example" : "1"
+          },
+          "shortUrl" : {
+            "type" : "string",
+            "description" : "Generated redirect URL",
+            "format" : "uri",
+            "example" : "http://localhost:8080/s/1"
+          },
+          "originalUrl" : {
+            "type" : "string",
+            "description" : "Original destination URL",
+            "format" : "uri",
+            "example" : "https://example.com/articles/java"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "description" : "UTC creation timestamp",
+            "format" : "date-time",
+            "example" : "2026-10-07T10:30:00Z"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "description" : "Optional expiry timestamp; null means no expiry",
+            "format" : "date-time",
+            "nullable" : true,
+            "example" : "2030-01-01T00:00:00Z"
+          },
+          "clickCount" : {
+            "type" : "integer",
+            "description" : "Recorded active GET redirects; starts at zero",
+            "format" : "int64",
+            "example" : 3
+          },
+          "lastClickedAt" : {
+            "type" : "string",
+            "description" : "Latest recorded visit time; null before the first visit",
+            "format" : "date-time",
+            "nullable" : true,
+            "example" : "2026-10-07T10:35:00Z"
+          },
+          "expired" : {
+            "type" : "boolean",
+            "description" : "True when expiry is at or before the current UTC time",
+            "example" : false
+          }
+        }
+      }
+    }
+  }
+}
