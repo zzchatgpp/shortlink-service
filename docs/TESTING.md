@@ -47,12 +47,14 @@ in the executable application. The test profile disables Redis operations.
 Cache unit tests mock the Redis client; they do not connect to a Redis server.
 Mockito uses the subclass mock maker, so tests do not need JVM agent attachment.
 
-## Remaining verification
+## Live stack verification
 
-Live MySQL migration/schema validation, Redis connectivity and TTL behavior,
-Docker Compose startup, and deployed endpoint checks remain to be completed.
-H2 and mock-based checks do not establish production database/cache compatibility.
-Docker and GitHub Actions definitions are prepared. No Docker daemon is available
-in the authoring environment, so the image build and live-stack smoke test have
-not run here. GitHub repository creation/upload is pending; Railway deployment
-follows in Step 12.
+GitHub Actions successfully ran the Java tests and the full Docker Compose
+stack with MySQL 8.4 and Redis 7.4. The container smoke test passed creation,
+302 redirects, click counts, uncounted HEAD, URL validation, unknown-code 404,
+expired-link 410, retained expired analytics, and a real Redis entry/TTL.
+
+Railway's application, MySQL and Redis services are online. Flyway migration
+and Hibernate schema validation completed successfully, and the public OpenAPI
+endpoint exposes the three business paths. Deployment details and public links
+are in [DEPLOYMENT.md](DEPLOYMENT.md).
