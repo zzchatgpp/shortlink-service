@@ -1,10 +1,11 @@
 FROM maven:3.9.16-eclipse-temurin-17 AS build
 WORKDIR /build
 COPY pom.xml .
-RUN mvn -B dependency:go-offline
+COPY .mvn/settings.xml .mvn/settings.xml
+RUN mvn -B -s .mvn/settings.xml dependency:go-offline
 COPY src ./src
 # Runs the JUnit/Mockito/H2 tests before packaging.
-RUN mvn -B package
+RUN mvn -B -s .mvn/settings.xml package
 
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
